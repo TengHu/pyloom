@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "pyloom"
+version = "0.0.2"
+description = "A event sourcing framework for building large language model applications"
+authors = ["Teng (Niel) Hu <hu.niel92@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+pyvis = "0.3.1"
+
+
+[tool.poetry.group.dev.dependencies]
+openai = "^0.27.8"
+jupyterlab = "^4.0.4"
+black = "^23.7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
