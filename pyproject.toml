@@ -2,7 +2,7 @@
 name = "pyloom"
 version = "0.0.2"
 description = "A event sourcing framework for building large language model applications"
-authors = ["Teng (Niel) Hu <hu.niel92@gmail.com>"]
+authors = ['Teng "Niel" Hu <hu.niel92@gmail.com>']
 readme = "README.md"
 
 [tool.poetry.dependencies]
