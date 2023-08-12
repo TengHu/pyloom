@@ -11,11 +11,12 @@ Pyloom is crafted to address these challenges.
 
 Features
 - **"Git for Agent":** Pyloom tracks state changes and the evolution of the agent at each step.
-- **Agent Replay:** With Pyloom, developers can  replay and navigate through the agent's flow. Once encouter an error in the agent flow, you can fix the issue and restart from the exact point of failure. You don't need to make all those llm calls again and waste tokens.
+- **Agent Replay:** With Pyloom, developers can replay and navigate through the agent's flow. Once encouter an error in the agent flow, you can fix the issue and restart from the exact point of failure.
 - **Event Sourcing:** Pyloom employs event sourcing, representing agent actions as events. By replaying the event stream, the agent's state can be reconstructed. Furthermore, developer can apply the same event streams to different agents and compare performance.
 - **Reproduce Production Issues:** Leveraging event sourcing, Pyloom facilitates the reproducing of production errors by replaying the identical event streams in development environment.
-- **Auditability and Traceability:** Pyloom enhances the audit and traceability within LLM applications.
-- **Compatibility:** Pyloom can be used with other LLM frameworks like langchain and guidance.
+
+
+Pyloom can be used with other LLM frameworks like langchain and guidance.
 
 ## Installation
 You can install Pyloom using pip:
@@ -25,7 +26,7 @@ pip install pyloom
 ```
 
 ## Quick Start
-
+- [tutorial](notebooks/tutorial.ipynb)
 
 ## Contributing
 We are extremely open to contributions in various forms: bug fixes, new features, improved documentation, and pull requests. Your input is valuable to us!
