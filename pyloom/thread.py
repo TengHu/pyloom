@@ -15,6 +15,38 @@ from .class_resolver import (
 )
 from .tree import Event, Node, Tree
 
+###### Event Processor
+
+
+class EventProcessorException(Exception):
+    pass
+
+
+class EventProcessor:
+    """
+    Event processor stores context of the processing, e.g. whether it's in replay mode or not.
+    """
+
+    def __init__(self, thread: Thread):
+        self.thread = thread
+        self.pre_hooks = []
+        self.post_hooks = []
+
+    def process_event(self, event, *args, **kwargs):
+        for hook in self.pre_hooks:
+            _ = hook(event)
+        response = self._process_event(event, *args, **kwargs)
+        for hook in self.post_hooks:
+            _ = hook(response)
+        return response
+
+    def _process_event(self, event, *args, **kwargs):
+        if isinstance(event, CanMutateThread):
+            return event.mutate(self.thread, *args, **kwargs)
+        else:
+            raise EventProcessorException("Unsupported event type")
+
+
 ############################
 # Event Definitions
 ############################
@@ -37,6 +69,16 @@ class CanMutateThread(Event):
             event.event_mutate_level = thread.event_mutate_level
             ret = decorated_func(event, thread, *args, **kwargs)
             thread.event_mutate_level -= 1
+            return ret
+
+        return wrapper
+
+    def event_processor_decorator(decorated_func):
+        # functool wrapper
+        def wrapper(event, thread, *args, **kwargs):
+            assert event is not None
+            assert thread is not None
+            ret = thread._event_processor.process_event(event, *args, **kwargs)
             return ret
 
         return wrapper
@@ -103,6 +145,9 @@ class CanInitThread(CanMutateThread):
                 {}
             )  # store snapshot functions for attributes
             thread.tree = tree.Tree()
+
+        #
+        thread._event_processor = EventProcessor(thread)
 
         # Level of command and event nesting of thread
         thread.event_mutate_level = -1
@@ -441,11 +486,11 @@ class Thread(metaclass=MetaThread):
         return type(self) == type(other) and {
             k: v
             for k, v in self.__dict__.items()
-            if k not in ("tree", "attributes_snapshotters")
+            if k not in ("tree", "attributes_snapshotters", "_event_processor")
         } == {
             k: v
             for k, v in other.__dict__.items()
-            if k not in ("tree", "attributes_snapshotters")
+            if k not in ("tree", "attributes_snapshotters", "_event_processor")
         }
 
     def trigger_event(
@@ -473,6 +518,9 @@ class Thread(metaclass=MetaThread):
             event_args=args,
             event_kwargs=kwargs,
         )
+
+        self._event_processor.process_event(new_event)
+
         return new_event.mutate(self, return_response=True)
 
     def _is_rewindable(self, input):
@@ -656,13 +704,9 @@ class Thread(metaclass=MetaThread):
         for event in events:
             if clone:
                 event = event.clone()
+
             event.mutate(self)
         return self
-
-    def to_networkx(self):
-        # TODO: implementation
-        # hover on node, show hash
-        pass
 
     ############################
     # tree
