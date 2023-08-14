@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+from functools import wraps
 from types import FunctionType, WrapperDescriptorType
 from typing import Any, Dict, Optional, Sequence, Type, Union
 
@@ -32,17 +33,23 @@ class EventProcessor:
         self.pre_hooks = []
         self.post_hooks = []
 
-    def process_event(self, event, *args, **kwargs):
+    def process_event(self, event, func, *args, **kwargs):
         for hook in self.pre_hooks:
             _ = hook(event)
-        response = self._process_event(event, *args, **kwargs)
+
+        self.thread.event_nested_level += 1
+        event.event_nested_level = self.thread.event_nested_level
+
+        response = self._process_event(event, func, *args, **kwargs)
         for hook in self.post_hooks:
             _ = hook(response)
+
+        self.thread.event_nested_level -= 1
         return response
 
-    def _process_event(self, event, *args, **kwargs):
+    def _process_event(self, event, func, *args, **kwargs):
         if isinstance(event, CanMutateThread):
-            return event.mutate(self.thread, *args, **kwargs)
+            return func(event, self.thread, *args, **kwargs)
         else:
             raise EventProcessorException("Unsupported event type")
 
@@ -58,32 +65,22 @@ class CanMutateThread(Event):
     Event that mutates the thread and save snapshots of its state in nodes.
     """
 
-    event_mutate_level: int = 0
-
-    def event_depth_decorator(decorated_func):
-        def wrapper(event, thread, *args, **kwargs):
-            assert event is not None
-            assert thread is not None
-
-            thread.event_mutate_level += 1
-            event.event_mutate_level = thread.event_mutate_level
-            ret = decorated_func(event, thread, *args, **kwargs)
-            thread.event_mutate_level -= 1
-            return ret
-
-        return wrapper
+    event_nested_level: int = 0
 
     def event_processor_decorator(decorated_func):
-        # functool wrapper
+        @wraps(decorated_func)
         def wrapper(event, thread, *args, **kwargs):
             assert event is not None
             assert thread is not None
-            ret = thread._event_processor.process_event(event, *args, **kwargs)
+
+            ret = thread._event_processor.process_event(
+                event, decorated_func, *args, **kwargs
+            )
             return ret
 
         return wrapper
 
-    @event_depth_decorator
+    @event_processor_decorator
     def mutate(self, thread, return_response=False):
         assert thread is not None
 
@@ -150,7 +147,7 @@ class CanInitThread(CanMutateThread):
         thread._event_processor = EventProcessor(thread)
 
         # Level of command and event nesting of thread
-        thread.event_mutate_level = -1
+        thread.event_nested_level = -1
 
         # Save event in current node
         thread.tree.current.event = self
@@ -168,17 +165,17 @@ class CanInitThread(CanMutateThread):
         )
 
         try:
-            # Increment event_mutate_level
-            thread.event_mutate_level += 1
-            self.event_mutate_level = thread.event_mutate_level
+            # Increment event_nested_level
+            thread.event_nested_level += 1
+            self.event_nested_level = thread.event_nested_level
 
             # Invoke init method
             thread.__init__(
                 *self.__dict__["event_args"], **self.__dict__["event_kwargs"]
             )
 
-            # Decrement event_mutate_level
-            thread.event_mutate_level -= 1
+            # Decrement event_nested_level
+            thread.event_nested_level -= 1
 
             Thread.unwrap_snapshot_on_event(thread)
 
@@ -518,9 +515,6 @@ class Thread(metaclass=MetaThread):
             event_args=args,
             event_kwargs=kwargs,
         )
-
-        self._event_processor.process_event(new_event)
-
         return new_event.mutate(self, return_response=True)
 
     def _is_rewindable(self, input):
@@ -648,7 +642,7 @@ class Thread(metaclass=MetaThread):
 
     def events(
         self,
-        event_mutate_levels=None,
+        event_nested_levels=None,
     ) -> Sequence[CanMutateThread]:
         """
         Collect the events to build up to current thread state.
@@ -658,7 +652,7 @@ class Thread(metaclass=MetaThread):
         Returns:
             Sequence[CanMutateThread]: A sequence of CanMutateThread objects representing the collected events.
         """
-        if event_mutate_levels is None:
+        if event_nested_levels is None:
             show_all = True
         else:
             show_all = False
@@ -671,12 +665,12 @@ class Thread(metaclass=MetaThread):
         for i in range(index):
             node = nodes[i]
             if node.event is not None:
-                if show_all or node.event.event_mutate_level in event_mutate_levels:
+                if show_all or node.event.event_nested_level in event_nested_levels:
                     events.append(node.event)
         return events
 
-    def remain_events(self, event_mutate_levels=None):
-        if event_mutate_levels is None:
+    def remain_events(self, event_nested_levels=None):
+        if event_nested_levels is None:
             show_all = True
         else:
             show_all = False
@@ -689,13 +683,13 @@ class Thread(metaclass=MetaThread):
         for i in range(index, len(nodes)):
             node = nodes[i]
             if node.event is not None:
-                if show_all or node.event.event_mutate_level in event_mutate_levels:
+                if show_all or node.event.event_nested_level in event_nested_levels:
                     events.append(node.event)
         return events
 
-    def last_event(self, event_mutate_levels=None) -> CanMutateThread:
+    def last_event(self, event_nested_levels=None) -> CanMutateThread:
         """Return the last event in the doubly-linked list of thread."""
-        events = self.events(event_mutate_levels)
+        events = self.events(event_nested_levels)
 
         if events:
             return events[-1]
@@ -704,7 +698,6 @@ class Thread(metaclass=MetaThread):
         for event in events:
             if clone:
                 event = event.clone()
-
             event.mutate(self)
         return self
 
@@ -749,7 +742,7 @@ class Thread(metaclass=MetaThread):
                     hash2index[node.prev_node.hash],
                     hash2index[hash],
                     label="{}_{}".format(
-                        node.prev_node.event.event_mutate_level,
+                        node.prev_node.event.event_nested_level,
                         node.prev_node.event.event_name,
                     ),
                 )
