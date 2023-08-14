@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyloom"
-version = "0.0.2"
+version = "0.0.3"
 description = "A event sourcing framework for building large language model applications"
 authors = ['Teng "Niel" Hu <hu.niel92@gmail.com>']
 readme = "README.md"
