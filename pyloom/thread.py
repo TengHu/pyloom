@@ -34,15 +34,17 @@ class EventProcessor:
         self.post_hooks = []
 
     def process_event(self, event, func, *args, **kwargs):
+        current_node = self.thread.tree.current
+
         for hook in self.pre_hooks:
-            _ = hook(event)
+            _ = hook(self.thread, current_node, func, event, *args, **kwargs)
 
         self.thread.event_nested_level += 1
         event.event_nested_level = self.thread.event_nested_level
 
         response = self._process_event(event, func, *args, **kwargs)
         for hook in self.post_hooks:
-            _ = hook(response)
+            _ = hook(self.thread, current_node, event, response)
 
         self.thread.event_nested_level -= 1
         return response
@@ -108,11 +110,12 @@ class CanMutateThread(Event):
                 for k, v in thread.__dict__.items()
                 if k in thread.attributes_snapshotters
             }
-
+        except ThreadException as e:
+            raise e
         except Exception as e:
             thread.rewind(steps=1)
             thread.tree.current.next_node = None
-            raise e
+            raise ThreadException(e)
 
         if return_response:
             return response
@@ -186,10 +189,12 @@ class CanInitThread(CanMutateThread):
                 if k in thread.attributes_snapshotters
             }
 
+        except ThreadException as e:
+            raise e
         except Exception as e:
             thread.rewind(steps=1)
             thread.tree.current.next_node = None
-            raise e
+            raise ThreadException(e)
         return thread
 
 
@@ -349,6 +354,9 @@ class EventHandlers:
     decorated_event_name_to_event_cls: Dict[
         str, Union[Type[ThreadDecoratedEvent], Type[ThreadCreated]]
     ] = field(default_factory=dict)
+
+    def get_decorated_method(self, event_name):
+        return self.decorated_event_name_to_command_obj[event_name].decorated_method
 
 
 class SnapshotOnEvent:
